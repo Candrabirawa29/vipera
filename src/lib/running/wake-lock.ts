@@ -5,6 +5,7 @@
 export class ScreenWakeManager {
   private wakeLock: WakeLockSentinel | null = null;
   private isRequested = false;
+  private listenerAttached = false;
 
   public async requestLock(): Promise<boolean> {
     this.isRequested = true;
@@ -12,12 +13,18 @@ export class ScreenWakeManager {
       return false;
     }
 
+    if (!this.listenerAttached && typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", this.handleVisibilityChange);
+      this.listenerAttached = true;
+    }
+
     try {
-      this.wakeLock = await navigator.wakeLock.request("screen");
-      this.wakeLock.addEventListener("release", () => {
-        // Re-acquire if still requested and page became visible again
-        this.wakeLock = null;
-      });
+      if (!this.wakeLock || this.wakeLock.released) {
+        this.wakeLock = await navigator.wakeLock.request("screen");
+        this.wakeLock.addEventListener("release", () => {
+          this.wakeLock = null;
+        });
+      }
       return true;
     } catch {
       return false;
@@ -26,6 +33,11 @@ export class ScreenWakeManager {
 
   public async releaseLock(): Promise<void> {
     this.isRequested = false;
+    if (this.listenerAttached && typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", this.handleVisibilityChange);
+      this.listenerAttached = false;
+    }
+
     if (this.wakeLock) {
       try {
         await this.wakeLock.release();
@@ -36,7 +48,11 @@ export class ScreenWakeManager {
     }
   }
 
-  public handleVisibilityChange = async () => {
+  public isLockActive(): boolean {
+    return this.wakeLock !== null && !this.wakeLock.released;
+  }
+
+  private handleVisibilityChange = async () => {
     if (this.isRequested && document.visibilityState === "visible" && !this.wakeLock) {
       await this.requestLock();
     }

@@ -11,17 +11,17 @@ export interface RawGPSPoint {
 }
 
 export interface FilterOptions {
-  maxAccuracyMeters?: number; // Reject if accuracy worse than this (e.g. 35m)
-  maxRunningSpeedMps?: number; // Max plausible speed (e.g. 12 m/s ~ 43.2 km/h, Bolt runs 12.2 m/s)
-  minTimeDeltaMs?: number; // Ignore if < 200ms (duplicate polling)
+  maxAccuracyMeters?: number; // Reject if accuracy worse than this (default 50m)
+  maxRunningSpeedMps?: number; // Max speed threshold (default 18 m/s = 64.8 km/h, allows bike/motorbike testing)
+  minTimeDeltaMs?: number; // Ignore if < 250ms (duplicate polling)
   minDistanceMeters?: number; // Ignore sub-meter jitter when standing still
 }
 
 const DEFAULT_OPTIONS: Required<FilterOptions> = {
-  maxAccuracyMeters: 30,
-  maxRunningSpeedMps: 11.5, // 41.4 km/h
-  minTimeDeltaMs: 400,
-  minDistanceMeters: 1.2,
+  maxAccuracyMeters: 50,
+  maxRunningSpeedMps: 18.0, // 64.8 km/h (>= 15 m/s as requested)
+  minTimeDeltaMs: 250,
+  minDistanceMeters: 0.8,
 };
 
 export type AnomalyReason =
@@ -30,7 +30,8 @@ export type AnomalyReason =
   | "TIMESTAMP_REGRESSION"
   | "TIME_DELTA_TOO_SMALL"
   | "TELEPORTATION_UNREALISTIC_SPEED"
-  | "STATIONARY_JITTER";
+  | "STATIONARY_JITTER"
+  | "DUPLICATE_POINT";
 
 export interface FilterResult {
   isValid: boolean;
@@ -93,8 +94,18 @@ export function evaluateGPSPoint(
   const timeDeltaSec = timeDeltaMs / 1000;
   const speedMps = distanceDelta / timeDeltaSec;
 
-  // 5. Stationary jitter filter (if runner is stationary, GPS might wander 1-2m in circles)
-  if (distanceDelta < opts.minDistanceMeters && speedMps < 0.4) {
+  // 5. Duplicate point check
+  if (distanceDelta < 0.3) {
+    return {
+      isValid: false,
+      reason: "DUPLICATE_POINT",
+      calculatedDistanceDelta: 0,
+      calculatedSpeedMps: 0,
+    };
+  }
+
+  // 6. Stationary jitter filter (if runner is stationary, GPS might wander in tiny circles)
+  if (distanceDelta < opts.minDistanceMeters && speedMps < 0.3) {
     return {
       isValid: false,
       reason: "STATIONARY_JITTER",
