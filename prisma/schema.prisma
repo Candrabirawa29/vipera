@@ -1,0 +1,352 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum ActivityType {
+  RUN
+  WALK
+  INTERVAL
+  TEMPO
+  LONG_RUN
+  EASY_RUN
+  RACE
+}
+
+enum RunStatus {
+  IN_PROGRESS
+  COMPLETED
+  DISCARDED
+}
+
+enum SyncStatus {
+  PENDING
+  SYNCING
+  SYNCED
+  FAILED
+}
+
+enum StepType {
+  WARMUP
+  RUN
+  RECOVERY
+  WALK
+  REST
+  COOLDOWN
+  FREE_RUN
+}
+
+enum TargetType {
+  DISTANCE
+  DURATION
+  OPEN
+}
+
+enum TargetUnit {
+  METERS
+  SECONDS
+}
+
+enum SplitType {
+  KILOMETER
+  MILE
+  INTERVAL
+}
+
+enum RecordCategory {
+  FASTEST_1K
+  FASTEST_3K
+  FASTEST_5K
+  FASTEST_10K
+  LONGEST_DISTANCE
+  LONGEST_DURATION
+  FASTEST_AVERAGE_PACE
+}
+
+enum GoalType {
+  DISTANCE_TIME
+  WEEKLY_DISTANCE
+  MONTHLY_DISTANCE
+  RUN_COUNT
+}
+
+enum GoalStatus {
+  ACTIVE
+  ACHIEVED
+  EXPIRED
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String?
+  role         Role      @default(USER)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  settings        Settings?
+  runs            Run[]
+  workouts        IntervalWorkout[]
+  routes          Route[]
+  goals           Goal[]
+  personalRecords PersonalRecord[]
+
+  @@map("users")
+}
+
+model Settings {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  unitSystem           String   @default("METRIC") // METRIC, IMPERIAL
+  paceFormat           String   @default("MIN_PER_KM") // MIN_PER_KM, MIN_PER_MI
+  autoPause            Boolean  @default(false)
+  gpsAccuracyThreshold Float    @default(25.0) // meters
+  voiceCues            Boolean  @default(true)
+  soundEffects         Boolean  @default(true)
+  vibration            Boolean  @default(true)
+  screenWakeLock       Boolean  @default(true)
+  mapTheme             String   @default("sport-dark")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@map("settings")
+}
+
+model Run {
+  id             String       @id // Client-generated UUID for offline idempotency
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title          String
+  startedAt      DateTime
+  endedAt        DateTime?
+  duration       Int          @default(0) // seconds active
+  distance       Float        @default(0) // meters
+  averagePace    Float        @default(0) // sec / km
+  fastestPace    Float        @default(0) // sec / km
+  averageSpeed   Float        @default(0) // m/s
+  maxSpeed       Float        @default(0) // m/s
+  elevationGain  Float        @default(0) // meters
+  elevationLoss  Float        @default(0) // meters
+  calories       Int          @default(0)
+  activityType   ActivityType @default(RUN)
+  status         RunStatus    @default(COMPLETED)
+  notes          String?      @db.Text
+  feeling        String? // TERRIBLE, TIRED, GOOD, STRONG, UNSTOPPABLE
+  energy         Int? // 1 to 5
+  legCondition   Int? // 1 to 5
+  weatherSnapshot Json?
+  idempotencyKey String?      @unique
+  syncStatus     SyncStatus   @default(SYNCED)
+  routeId        String?
+  route          Route?       @relation(fields: [routeId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  points       RunPoint[]
+  splits       Split[]
+  intervals    RunInterval[]
+  runWorkout   RunWorkout?
+  journal      RunJournal?
+
+  @@index([userId, startedAt(sort: Desc)])
+  @@index([userId, distance])
+  @@index([routeId])
+  @@map("runs")
+}
+
+model RunPoint {
+  id                String   @id @default(cuid())
+  runId             String
+  run               Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  latitude          Float
+  longitude         Float
+  altitude          Float?
+  accuracy          Float
+  speed             Float?
+  heading           Float?
+  timestamp         DateTime
+  elapsedTime       Int // seconds from start
+  distanceFromStart Float // meters
+  pace              Float? // sec / km
+  isPaused          Boolean  @default(false)
+
+  @@index([runId, elapsedTime])
+  @@map("run_points")
+}
+
+model Split {
+  id              String    @id @default(cuid())
+  runId           String
+  run             Run       @relation(fields: [runId], references: [id], onDelete: Cascade)
+  splitNumber     Int
+  distance        Float // meters (usually 1000m)
+  duration        Int // seconds
+  pace            Float // sec / km
+  averageSpeed    Float // m/s
+  elevationChange Float     @default(0) // meters
+  splitType       SplitType @default(KILOMETER)
+
+  @@unique([runId, splitNumber])
+  @@index([runId])
+  @@map("splits")
+}
+
+model IntervalWorkout {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?  @db.Text
+  isPreset    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  steps       WorkoutStep[]
+  runWorkouts RunWorkout[]
+
+  @@index([userId])
+  @@map("interval_workouts")
+}
+
+model WorkoutStep {
+  id            String          @id @default(cuid())
+  workoutId     String
+  workout       IntervalWorkout @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  order         Int
+  stepType      StepType        @default(RUN)
+  targetType    TargetType      @default(DISTANCE)
+  targetValue   Float // meters or seconds
+  targetUnit    TargetUnit      @default(METERS)
+  repeatCount   Int             @default(1)
+  groupIndex    Int? // grouping index for repeat groups
+  label         String?
+  targetPaceMin Float? // sec / km
+  targetPaceMax Float? // sec / km
+  notes         String?
+
+  @@index([workoutId, order])
+  @@map("workout_steps")
+}
+
+model RunWorkout {
+  id             String           @id @default(cuid())
+  runId          String           @unique
+  run            Run              @relation(fields: [runId], references: [id], onDelete: Cascade)
+  workoutId      String?
+  workout        IntervalWorkout? @relation(fields: [workoutId], references: [id], onDelete: SetNull)
+  workoutTitle   String
+  totalSteps     Int
+  completedSteps Int
+
+  @@map("run_workouts")
+}
+
+model RunInterval {
+  id              String   @id @default(cuid())
+  runId           String
+  run             Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  stepOrder       Int
+  stepType        StepType @default(RUN)
+  targetLabel     String
+  targetDistance  Float? // meters
+  targetDuration  Int? // seconds
+  actualDistance  Float // meters
+  actualDuration  Int // seconds
+  averagePace     Float // sec / km
+  fastestPace     Float? // sec / km
+  elevationChange Float?   @default(0)
+  completed       Boolean  @default(true)
+
+  @@index([runId, stepOrder])
+  @@map("run_intervals")
+}
+
+model Route {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  startLat        Float
+  startLng        Float
+  endLat          Float
+  endLng          Float
+  centerLat       Float
+  centerLng       Float
+  boundingBox     Json // { minLat, maxLat, minLng, maxLng }
+  polyline        String   @db.Text
+  averageDistance Float
+  runCount        Int      @default(0)
+  bestTime        Int? // seconds
+  averageTime     Int? // seconds
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  runs            Run[]
+
+  @@index([userId])
+  @@map("routes")
+}
+
+model PersonalRecord {
+  id            String         @id @default(cuid())
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category      RecordCategory
+  value         Float // seconds (for timed distances) or meters (for distance) or sec/km
+  previousValue Float?
+  improvement   Float? // delta value
+  achievedAt    DateTime
+  runId         String
+  isCurrent     Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([userId, category, isCurrent])
+  @@map("personal_records")
+}
+
+model Goal {
+  id           String     @id @default(cuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String
+  goalType     GoalType
+  targetValue  Float // target seconds or meters or run count
+  currentValue Float      @default(0)
+  targetDate   DateTime?
+  status       GoalStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([userId, status])
+  @@map("goals")
+}
+
+model RunJournal {
+  id             String   @id @default(cuid())
+  runId          String   @unique
+  run            Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  feeling        String // emoji code or word: TERRIBLE, TIRED, GOOD, STRONG, UNSTOPPABLE
+  energy         Int // 1 to 5
+  legCondition   Int // 1 to 5
+  sleepQuality   Int? // 1 to 5
+  mood           String?
+  weatherFeeling String?
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("run_journals")
+}

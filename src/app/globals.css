@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --background: #0c1017;
+    --foreground: #f1f5f9;
+    --card: #141a24;
+    --card-foreground: #f8fafc;
+    --popover: #141a24;
+    --popover-foreground: #f8fafc;
+    --primary: #10b981;
+    --primary-foreground: #022c22;
+    --secondary: #1e293b;
+    --secondary-foreground: #f8fafc;
+    --muted: #1e2532;
+    --muted-foreground: #94a3b8;
+    --accent: #22c55e;
+    --accent-foreground: #022c22;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --warning: #f59e0b;
+    --border: #232d3d;
+    --input: #232d3d;
+    --ring: #10b981;
+    --radius: 0.75rem;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+/* Tabular nums for metric counters */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0c1017;
+}
+::-webkit-scrollbar-thumb {
+  background: #232d3d;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Leaflet dark theme tweaks */
+.leaflet-container {
+  background-color: #0c1017 !important;
+  font-family: inherit !important;
+}
+.leaflet-tile {
+  filter: brightness(0.85) contrast(1.15) saturate(0.9);
+}
