@@ -22,7 +22,7 @@ class SoundSynthesizer {
       }
     }
     if (this.ctx && this.ctx.state === "suspended") {
-      this.ctx.resume().catch(() => {});
+      this.ctx.resume().catch(() => { });
     }
     return this.ctx;
   }
@@ -94,6 +94,15 @@ export function speakCue(text: string, enabled = true) {
   try {
     window.speechSynthesis.cancel(); // cancel pending utterances
     const utterance = new SpeechSynthesisUtterance(text);
+
+    utterance.lang = "en-US";
+
+    const voices = window.speechSynthesis.getVoices();
+    const englishVoice = voices.find(voice => voice.lang.startsWith("en"));
+    if (englishVoice) {
+      utterance.voice = englishVoice;
+    }
+
     utterance.rate = 1.05;
     utterance.pitch = 1.0;
     utterance.volume = 1.0;
